@@ -1,912 +1,4 @@
-<script>
-        let exercises = [];
-        let mainChart, secondaryChart;
-        let personalRecords = {};
-        
-        // Exercise categories and their exercises
-        const exerciseCategories = {
-            'upper-push': {
-                name: 'Upper Body Push',
-                exercises: [
-                    'Flat Bench Press',
-                    'Overhead Press',
-                    'Inclined Dumbbell Press',
-                    'Dips',
-                    'Lateral Raise',
-                    'Cable Pull Down'
-                ]
-            },
-            'lower-push': {
-                name: 'Lower Body Push',
-                exercises: [
-                    'Back Squats',
-                    'Romanian Deadlift',
-                    'Leg Press',
-                    'Bulgarian Split Squat',
-                    'Seated Calf Raise',
-                    'Ab Rollout'
-                ]
-            },
-            'upper-pull': {
-                name: 'Upper Body Pull',
-                exercises: [
-                    // Will be populated when you provide them
-                ]
-            },
-            'lower-pull': {
-                name: 'Lower Body Pull',
-                exercises: [
-                    // Will be populated when you provide them
-                ]
-            }
-        };
-        
-        // Set today's date as default
-        document.getElementById('exerciseDate').valueAsDate = new Date();
-        
-        // Load data from memory on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            loadExercises();
-            updateStats();
-            updateCharts();
-            
-            // Set up event listeners after DOM loads
-            const exerciseSelect = document.getElementById('exerciseName');
-            const categorySelect = document.getElementById('exerciseCategory');
-            
-            if (categorySelect) {
-                categorySelect.addEventListener('change', updateExerciseOptions);
-                console.log('Category select listener added');
-            }
-            
-            if (exerciseSelect) {
-                exerciseSelect.addEventListener('change', showSetsContainer);
-                console.log('Exercise select listener added');
-            }
-            
-            console.log('Page loaded, event listeners attached');
-        });
-        
-        // Helper function to calculate exercise volume
-        function calculateVolume(sets) {
-            return sets.reduce((total, set) => total + (set.reps * set.weight), 0);
-        }
-        
-        // Helper function to find max weight for an exercise
-        function findMaxWeight(sets) {
-            return Math.max(...sets.map(set => set.weight));
-        }
-        
-        // Helper function to check for personal records
-        function checkPersonalRecord(exerciseName, weight) {
-            if (!personalRecords[exerciseName] || weight > personalRecords[exerciseName]) {
-                personalRecords[exerciseName] = weight;
-                return true;
-            }
-            return false;
-        }
-        
-        // Remove the old event listener that was causing conflicts
-        // Add event listener after DOM loads
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('exerciseName').addEventListener('change', showSetsContainer);
-        });
-        
-        // Update exercise options based on selected category
-        function updateExerciseOptions() {
-            const categorySelect = document.getElementById('exerciseCategory');
-            const exerciseSelect = document.getElementById('exerciseName');
-            const setsContainer = document.getElementById('setsContainer');
-            const selectedCategory = categorySelect.value;
-            
-            console.log('Category changed to:', selectedCategory);
-            
-            exerciseSelect.innerHTML = '<option value="">Select exercise</option>';
-            setsContainer.style.display = 'none';
-            
-            if (selectedCategory && exerciseCategories[selectedCategory]) {
-                exerciseSelect.disabled = false;
-                exerciseCategories[selectedCategory].exercises.forEach(exercise => {
-                    const option = document.createElement('option');
-                    option.value = exercise;
-                    option.textContent = exercise;
-                    exerciseSelect.appendChild(option);
-                });
-                console.log('Exercise options populated for:', selectedCategory);
-            } else {
-                exerciseSelect.disabled = true;
-            }
-        }
-        
-        // Show sets container when exercise is selected
-        function showSetsContainer() {
-            const exerciseSelect = document.getElementById('exerciseName');
-            const setsContainer = document.getElementById('setsContainer');
-            
-            console.log('Exercise selected:', exerciseSelect.value);
-            
-            if (exerciseSelect.value && exerciseSelect.value !== '') {
-                setsContainer.style.display = 'block';
-                console.log('Sets container shown');
-            } else {
-                setsContainer.style.display = 'none';
-                console.log('Sets container hidden');
-            }
-        }
-        
-        // Form submission
-        document.getElementById('exerciseForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const categoryValue = document.getElementById('exerciseCategory').value;
-            const categoryName = exerciseCategories[categoryValue] ? exerciseCategories[categoryValue].name : '';
-            const exerciseName = document.getElementById('exerciseName').value;
-            const date = document.getElementById('exerciseDate').value;
-            const notes = document.getElementById('notes').value;
-            
-            // Debug logging
-            console.log('Form submission started');
-            console.log('Category:', categoryName);
-            console.log('Exercise:', exerciseName);
-            console.log('Date:', date);
-            
-            // Collect sets data
-            const sets = [];
-            for (let i = 1; i <= 4; i++) {
-                const repsInput = document.getElementById(`reps${i}`);
-                const weightInput = document.getElementById(`weight${i}`);
-                
-                if (repsInput && weightInput) {
-                    const reps = repsInput.value;
-                    const weight = weightInput.value;
-                    
-                    if (reps && weight && reps.trim() !== '' && weight.trim() !== '') {
-                        sets.push({
-                            setNumber: i,
-                            reps: parseInt(reps),
-                            weight: parseFloat(weight)
-                        });
-                    }
-                }
-            }
-            
-            console.log('Sets collected:', sets);
-            
-            // Only log if at least one set is entered
-            if (sets.length === 0) {
-                alert('Please enter at least one set with both reps and weight.');
-                return;
-            }
-            
-            // Check for personal records
-            const maxWeight = findMaxWeight(sets);
-            const isPR = checkPersonalRecord(exerciseName, maxWeight);
-            
-            const exercise = {
-                id: Date.now(),
-                category: categoryName,
-                name: exerciseName,
-                date: date,
-                sets: sets,
-                volume: calculateVolume(sets),
-                maxWeight: maxWeight,
-                isPR: isPR,
-                notes: notes
-            };
-            
-            console.log('Exercise object created:', exercise);
-            
-            exercises.push(exercise);
-            saveExercises();
-            
-            // Reset form
-            this.reset();
-            document.getElementById('exerciseDate').valueAsDate = new Date();
-            document.getElementById('exerciseName').disabled = true;
-            document.getElementById('setsContainer').style.display = 'none';
-            
-            updateStats();
-            updateCharts();
-            renderExerciseLog();
-            
-            alert(`Successfully logged ${exercise.name} with ${sets.length} sets!`);
-        });
-        
-        function saveExercises() {
-            // Store in localStorage for persistence
-            try {
-                localStorage.setItem('exerciseLoggerData', JSON.stringify({
-                    exercises: exercises,
-                    personalRecords: personalRecords,
-                    version: '1.0',
-                    lastUpdated: new Date().toISOString()
-                }));
-            } catch (e) {
-                console.warn('Could not save to localStorage:', e);
-            }
-        }
-        
-        function loadExercises() {
-            // Load from localStorage
-            try {
-                const savedData = localStorage.getItem('exerciseLoggerData');
-                if (savedData) {
-                    const data = JSON.parse(savedData);
-                    exercises = data.exercises || [];
-                    personalRecords = data.personalRecords || {};
-                    
-                    // Migrate old data format if needed
-                    exercises = exercises.map(ex => {
-                        if (!ex.volume && ex.sets) {
-                            ex.volume = calculateVolume(ex.sets);
-                        }
-                        if (!ex.maxWeight && ex.sets) {
-                            ex.maxWeight = findMaxWeight(ex.sets);
-                        }
-                        return ex;
-                    });
-                    
-                    console.log(`Loaded ${exercises.length} exercises from storage`);
-                }
-            } catch (e) {
-                console.warn('Could not load from localStorage:', e);
-                exercises = [];
-                personalRecords = {};
-            }
-        }
-        
-        function exportData() {
-            const dataToExport = {
-                exercises: exercises,
-                personalRecords: personalRecords,
-                version: '1.0',
-                exportDate: new Date().toISOString(),
-                totalExercises: exercises.length,
-                dateRange: exercises.length > 0 ? {
-                    from: Math.min(...exercises.map(ex => new Date(ex.date))).toISOString().split('T')[0],
-                    to: Math.max(...exercises.map(ex => new Date(ex.date))).toISOString().split('T')[0]
-                } : null
-            };
-            
-            const dataStr = JSON.stringify(dataToExport, null, 2);
-            const dataBlob = new Blob([dataStr], {type: 'application/json'});
-            
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(dataBlob);
-            link.download = `exercise_data_${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            alert(`Successfully exported ${exercises.length} exercises!`);
-        }
-        
-        function importData(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const importedData = JSON.parse(e.target.result);
-                    
-                    // Validate data structure
-                    if (!importedData.exercises || !Array.isArray(importedData.exercises)) {
-                        throw new Error('Invalid data format: exercises array not found');
-                    }
-                    
-                    // Ask user for merge strategy
-                    const mergeChoice = confirm(
-                        `Found ${importedData.exercises.length} exercises to import.\n\n` +
-                        `Current data: ${exercises.length} exercises\n` +
-                        `Click OK to MERGE with existing data\n` +
-                        `Click Cancel to REPLACE all existing data`
-                    );
-                    
-                    if (mergeChoice) {
-                        // Merge: Add imported exercises with new IDs to avoid conflicts
-                        const maxExistingId = exercises.length > 0 ? Math.max(...exercises.map(ex => ex.id || 0)) : 0;
-                        const importedExercises = importedData.exercises.map((ex, index) => ({
-                            ...ex,
-                            id: maxExistingId + index + 1,
-                            imported: true
-                        }));
-                        
-                        exercises = [...exercises, ...importedExercises];
-                        
-                        // Merge personal records (keep the best)
-                        if (importedData.personalRecords) {
-                            Object.keys(importedData.personalRecords).forEach(exerciseName => {
-                                const importedPR = importedData.personalRecords[exerciseName];
-                                if (!personalRecords[exerciseName] || importedPR > personalRecords[exerciseName]) {
-                                    personalRecords[exerciseName] = importedPR;
-                                }
-                            });
-                        }
-                        
-                        alert(`Successfully merged ${importedData.exercises.length} exercises with existing data!`);
-                    } else {
-                        // Replace: Use imported data entirely
-                        exercises = importedData.exercises.map((ex, index) => ({
-                            ...ex,
-                            id: ex.id || Date.now() + index
-                        }));
-                        personalRecords = importedData.personalRecords || {};
-                        
-                        alert(`Successfully replaced all data with ${exercises.length} imported exercises!`);
-                    }
-                    
-                    // Save and refresh
-                    saveExercises();
-                    updateStats();
-                    updateCharts();
-                    renderExerciseLog();
-                    
-                } catch (error) {
-                    alert(`Import failed: ${error.message}\n\nPlease check that you're importing a valid exercise data file.`);
-                }
-            };
-            
-            reader.readAsText(file);
-            event.target.value = ''; // Reset file input
-        }
-        
-        function updateStats() {
-            const totalExercises = exercises.length;
-            const totalSets = exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
-            const totalVolume = exercises.reduce((sum, ex) => sum + ex.volume, 0);
-            const totalPRs = exercises.filter(ex => ex.isPR).length;
-            
-            const weekAgo = new Date();
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            const thisWeekExercises = exercises.filter(ex => new Date(ex.date) >= weekAgo);
-            const thisWeekVolume = thisWeekExercises.reduce((sum, ex) => sum + ex.volume, 0);
-            
-            // Group exercises by date for workout averages
-            const workoutDates = [...new Set(exercises.map(ex => ex.date))];
-            const avgVolumePerWorkout = workoutDates.length > 0 ? (totalVolume / workoutDates.length).toFixed(0) : 0;
-            
-            document.getElementById('totalExercises').textContent = totalExercises;
-            document.getElementById('totalSets').textContent = totalSets;
-            document.getElementById('totalVolume').textContent = totalVolume.toFixed(0);
-            document.getElementById('thisWeekVolume').textContent = thisWeekVolume.toFixed(0);
-            document.getElementById('avgVolume').textContent = avgVolumePerWorkout;
-            document.getElementById('personalRecords').textContent = totalPRs;
-        }
-        
-        function updateCharts() {
-            updateSelectedChart();
-            updateSecondaryChart();
-        }
-        
-        function updateSelectedChart() {
-            const chartType = document.getElementById('chartType').value;
-            
-            switch(chartType) {
-                case 'volume':
-                    updateVolumeChart();
-                    break;
-                case 'strength':
-                    updateStrengthChart();
-                    break;
-                case 'category':
-                    updateCategoryChart();
-                    break;
-                case 'heatmap':
-                    updateHeatmapChart();
-                    break;
-                case 'exercise-volume':
-                    updateExerciseVolumeChart();
-                    break;
-                case 'pr-timeline':
-                    updatePRTimelineChart();
-                    break;
-            }
-        }
-        
-        function updateVolumeChart() {
-            const ctx = document.getElementById('mainChart').getContext('2d');
-            
-            // Group exercises by date and sum volume
-            const dateGroups = exercises.reduce((groups, exercise) => {
-                const date = exercise.date;
-                if (!groups[date]) {
-                    groups[date] = 0;
-                }
-                groups[date] += exercise.volume;
-                return groups;
-            }, {});
-            
-            const dates = Object.keys(dateGroups).sort();
-            const volumes = dates.map(date => dateGroups[date]);
-            
-            if (mainChart) {
-                mainChart.destroy();
-            }
-            
-            mainChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: dates,
-                    datasets: [{
-                        label: 'Daily Volume (kg)',
-                        data: volumes,
-                        borderColor: '#667eea',
-                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Volume Progression (Total Weight × Reps)'
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Volume (kg)'
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        function updateStrengthChart() {
-            const ctx = document.getElementById('mainChart').getContext('2d');
-            
-            // Group by exercise and track max weight over time
-            const exerciseData = {};
-            exercises.forEach(exercise => {
-                if (!exerciseData[exercise.name]) {
-                    exerciseData[exercise.name] = [];
-                }
-                exerciseData[exercise.name].push({
-                    date: exercise.date,
-                    maxWeight: exercise.maxWeight
-                });
-            });
-            
-            // Get top 3 exercises by frequency
-            const topExercises = Object.keys(exerciseData)
-                .sort((a, b) => exerciseData[b].length - exerciseData[a].length)
-                .slice(0, 3);
-            
-            const datasets = topExercises.map((exerciseName, index) => {
-                const colors = ['#667eea', '#764ba2', '#f093fb'];
-                const data = exerciseData[exerciseName]
-                    .sort((a, b) => new Date(a.date) - new Date(b.date))
-                    .map(item => ({x: item.date, y: item.maxWeight}));
-                
-                return {
-                    label: exerciseName,
-                    data: data,
-                    borderColor: colors[index],
-                    backgroundColor: colors[index] + '20',
-                    borderWidth: 2,
-                    fill: false
-                };
-            });
-            
-            if (mainChart) {
-                mainChart.destroy();
-            }
-            
-            mainChart = new Chart(ctx, {
-                type: 'line',
-                data: { datasets },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Strength Progression (Max Weight Per Session)'
-                        }
-                    },
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                parser: 'YYYY-MM-DD',
-                                displayFormats: {
-                                    day: 'MMM DD'
-                                }
-                            }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Weight (kg)'
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        function updateCategoryChart() {
-            const ctx = document.getElementById('mainChart').getContext('2d');
-            
-            // Group by category and sum volume
-            const categoryData = exercises.reduce((groups, exercise) => {
-                const category = exercise.category || 'Uncategorized';
-                if (!groups[category]) {
-                    groups[category] = 0;
-                }
-                groups[category] += exercise.volume;
-                return groups;
-            }, {});
-            
-            if (mainChart) {
-                mainChart.destroy();
-            }
-            
-            mainChart = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: Object.keys(categoryData),
-                    datasets: [{
-                        data: Object.values(categoryData),
-                        backgroundColor: [
-                            '#667eea',
-                            '#764ba2',
-                            '#f093fb',
-                            '#f5576c'
-                        ]
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Volume Distribution by Category'
-                        }
-                    }
-                }
-            });
-        }
-        
-        function updateHeatmapChart() {
-            const ctx = document.getElementById('mainChart').getContext('2d');
-            
-            // Create weekly heatmap data
-            const weekData = {};
-            exercises.forEach(exercise => {
-                const date = new Date(exercise.date);
-                const dayOfWeek = date.getDay(); // 0 = Sunday
-                const weekNumber = Math.floor((date - new Date(date.getFullYear(), 0, 1)) / (7 * 24 * 60 * 60 * 1000));
-                
-                const key = `${weekNumber}-${dayOfWeek}`;
-                if (!weekData[key]) {
-                    weekData[key] = 0;
-                }
-                weekData[key] += exercise.volume;
-            });
-            
-            // For simplicity, show last 4 weeks
-            const today = new Date();
-            const fourWeeksAgo = new Date(today.getTime() - 28 * 24 * 60 * 60 * 1000);
-            const recentVolume = exercises
-                .filter(ex => new Date(ex.date) >= fourWeeksAgo)
-                .reduce((sum, ex) => sum + ex.volume, 0);
-            
-            if (mainChart) {
-                mainChart.destroy();
-            }
-            
-            mainChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                    datasets: [{
-                        label: 'Average Volume by Day',
-                        data: [1, 2, 3, 4, 5, 6, 0].map(day => {
-                            const dayExercises = exercises.filter(ex => new Date(ex.date).getDay() === day);
-                            return dayExercises.length > 0 ? 
-                                dayExercises.reduce((sum, ex) => sum + ex.volume, 0) / dayExercises.length : 0;
-                        }),
-                        backgroundColor: '#667eea'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Training Frequency by Day of Week'
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Average Volume (kg)'
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        function updateExerciseVolumeChart() {
-            const ctx = document.getElementById('mainChart').getContext('2d');
-            
-            // Group by exercise and sum total volume
-            const exerciseVolumes = exercises.reduce((groups, exercise) => {
-                if (!groups[exercise.name]) {
-                    groups[exercise.name] = 0;
-                }
-                groups[exercise.name] += exercise.volume;
-                return groups;
-            }, {});
-            
-            // Sort by volume and take top 8
-            const sortedExercises = Object.entries(exerciseVolumes)
-                .sort(([,a], [,b]) => b - a)
-                .slice(0, 8);
-            
-            if (mainChart) {
-                mainChart.destroy();
-            }
-            
-            mainChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: sortedExercises.map(([name]) => name),
-                    datasets: [{
-                        label: 'Total Volume (kg)',
-                        data: sortedExercises.map(([, volume]) => volume),
-                        backgroundColor: '#667eea'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Total Volume by Exercise'
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Volume (kg)'
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        function updatePRTimelineChart() {
-            const ctx = document.getElementById('mainChart').getContext('2d');
-            
-            const prExercises = exercises.filter(ex => ex.isPR);
-            
-            if (mainChart) {
-                mainChart.destroy();
-            }
-            
-            mainChart = new Chart(ctx, {
-                type: 'scatter',
-                data: {
-                    datasets: [{
-                        label: 'Personal Records',
-                        data: prExercises.map(ex => ({
-                            x: ex.date,
-                            y: ex.maxWeight,
-                            exerciseName: ex.name
-                        })),
-                        backgroundColor: '#ffd700',
-                        borderColor: '#ffed4e',
-                        pointRadius: 8
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Personal Records Timeline'
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return `${context.raw.exerciseName}: ${context.raw.y}kg`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                parser: 'YYYY-MM-DD',
-                                displayFormats: {
-                                    day: 'MMM DD'
-                                }
-                            }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Weight (kg)'
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        
-        function updateSecondaryChart() {
-            // Always show category distribution as secondary chart
-            const ctx = document.getElementById('secondaryChart').getContext('2d');
-            
-            const categoryData = exercises.reduce((groups, exercise) => {
-                const category = exercise.category || 'Uncategorized';
-                if (!groups[category]) {
-                    groups[category] = 0;
-                }
-                groups[category]++;
-                return groups;
-            }, {});
-            
-            if (secondaryChart) {
-                secondaryChart.destroy();
-            }
-            
-            secondaryChart = new Chart(ctx, {
-                type: 'pie',
-                data: {
-                    labels: Object.keys(categoryData),
-                    datasets: [{
-                        data: Object.values(categoryData),
-                        backgroundColor: [
-                            '#667eea',
-                            '#764ba2',
-                            '#f093fb',
-                            '#f5576c'
-                        ]
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Exercise Frequency by Category'
-                        }
-                    }
-                }
-            });
-        }
-        
-        function renderExerciseLog() {
-            const logContainer = document.getElementById('exerciseLog');
-            
-            if (exercises.length === 0) {
-                logContainer.innerHTML = `
-                    <div class="empty-state">
-                        <h3>No exercises logged yet</h3>
-                        <p>Start by logging your first exercise above!</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            // Group exercises by date
-            const dateGroups = exercises.reduce((groups, exercise) => {
-                const date = exercise.date;
-                if (!groups[date]) {
-                    groups[date] = [];
-                }
-                groups[date].push(exercise);
-                return groups;
-            }, {});
-            
-            // Sort dates in descending order
-            const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(b) - new Date(a));
-            
-            logContainer.innerHTML = sortedDates.map(date => {
-                const dayExercises = dateGroups[date];
-                const formattedDate = new Date(date).toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                });
-                
-                // Calculate daily totals
-                const dailyVolume = dayExercises.reduce((sum, ex) => sum + ex.volume, 0);
-                const dailySets = dayExercises.reduce((sum, ex) => sum + ex.sets.length, 0);
-                const dailyPRs = dayExercises.filter(ex => ex.isPR).length;
-                
-                const exerciseHtml = dayExercises.map(exercise => `
-                    <div class="exercise-entry">
-                        <div class="exercise-header">
-                            <div class="exercise-name">
-                                ${exercise.name}
-                                ${exercise.isPR ? '<span class="pr-badge">PR!</span>' : ''}
-                            </div>
-                            <button class="delete-btn" onclick="deleteExercise(${exercise.id})">×</button>
-                        </div>
-                        <div style="margin-bottom: 10px; color: #888; font-size: 14px; font-weight: 500;">${exercise.category}</div>
-                        <div class="sets-display">
-                            ${exercise.sets.map(set => `
-                                <div class="set-badge">Set ${set.setNumber}: ${set.reps} reps @ ${set.weight}kg</div>
-                            `).join('')}
-                        </div>
-                        <div class="volume-display">
-                            Volume: ${exercise.volume.toFixed(0)}kg | Max Weight: ${exercise.maxWeight}kg
-                        </div>
-                        ${exercise.notes ? `<div style="margin-top: 10px; font-style: italic; color: #666;">${exercise.notes}</div>` : ''}
-                    </div>
-                `).join('');
-                
-                return `
-                    <div class="day-group">
-                        <div class="day-header">
-                            ${formattedDate}
-                            <div style="font-size: 14px; font-weight: normal; margin-top: 5px;">
-                                ${dailyVolume.toFixed(0)}kg volume • ${dailySets} sets • ${dailyPRs} PRs
-                            </div>
-                        </div>
-                        ${exerciseHtml}
-                    </div>
-                `;
-            }).join('');
-        }
-        
-        function deleteExercise(id) {
-            if (confirm('Are you sure you want to delete this exercise?')) {
-                exercises = exercises.filter(ex => ex.id !== id);
-                saveExercises();
-                updateStats();
-                updateCharts();
-                renderExerciseLog();
-            }
-        }
-        
-        function switchTab(tab) {
-            // Remove active class from all tabs and contents
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            
-            // Add active class to clicked tab
-            event.target.classList.add('active');
-            
-            // Show corresponding content
-            if (tab === 'progress') {
-                document.getElementById('progressTab').classList.add('active');
-            } else {
-                document.getElementById('logTab').classList.add('active');
-                renderExerciseLog();
-            }
-        }
-        
-        // Initialize the log view
-        renderExerciseLog();
-    </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1007,12 +99,37 @@
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
         
-        .btn-danger {
-            background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+        .sets-grid {
+            display: grid;
+            grid-template-columns: 60px 1fr 1fr;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
         }
         
-        .btn-danger:hover {
-            box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+        .set-header {
+            font-weight: 600;
+            color: #667eea;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            text-align: center;
+        }
+        
+        .set-number {
+            font-weight: 600;
+            color: #333;
+            text-align: center;
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 6px;
+        }
+        
+        .set-input {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
         }
         
         .exercise-log {
@@ -1026,43 +143,18 @@
             padding: 15px;
             margin-bottom: 15px;
             border-left: 4px solid #667eea;
-            transition: transform 0.2s ease;
-        }
-        
-        .exercise-entry:hover {
-            transform: translateX(5px);
-        }
-        
-        .exercise-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
         }
         
         .exercise-name {
             font-weight: 600;
             color: #667eea;
             font-size: 18px;
-        }
-        
-        .exercise-date {
-            color: #888;
-            font-size: 14px;
+            margin-bottom: 5px;
         }
         
         .exercise-details {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        
-        .detail-item {
-            background: white;
-            padding: 8px 12px;
-            border-radius: 6px;
+            color: #666;
             font-size: 14px;
-            border: 1px solid #e0e0e0;
         }
         
         .stats-grid {
@@ -1092,10 +184,8 @@
             font-size: 14px;
         }
         
-        .chart-container {
-            position: relative;
-            height: 400px;
-            margin-bottom: 20px;
+        .hidden {
+            display: none;
         }
         
         .tabs {
@@ -1128,133 +218,19 @@
             display: block;
         }
         
-        .sets-grid {
-            display: grid;
-            grid-template-columns: 60px 1fr 1fr;
-            gap: 10px;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        
-        .set-header {
-            font-weight: 600;
-            color: #667eea;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 6px;
-            text-align: center;
-        }
-        
-        .set-number {
-            font-weight: 600;
-            color: #333;
-            text-align: center;
-            background: #e9ecef;
-            padding: 10px;
-            border-radius: 6px;
-        }
-        
-        .set-input {
-            padding: 10px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.3s ease;
-        }
-        
-        .set-input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
-        }
-        
-        .day-group {
-            margin-bottom: 30px;
-        }
-        
-        .day-header {
-            background: linear-gradient(45deg, #667eea, #764ba2);
-            color: white;
-            padding: 15px 20px;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 18px;
-            margin-bottom: 15px;
-            text-align: center;
-        }
-        
-        .chart-selector {
-            margin-bottom: 20px;
-        }
-        
-        .chart-selector select {
-            padding: 10px 15px;
-            border: 2px solid #667eea;
-            border-radius: 8px;
-            background: white;
-            color: #667eea;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        
-        .pr-badge {
-            background: linear-gradient(45deg, #ffd700, #ffed4e);
-            color: #333;
-            padding: 2px 6px;
-            border-radius: 8px;
-            font-size: 10px;
-            font-weight: bold;
-            margin-left: 5px;
-        }
-        
-        .volume-display {
-            color: #764ba2;
-            font-weight: 600;
-            font-size: 12px;
-            margin-top: 5px;
-        }
-        
-        .sets-display {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 10px;
-        }
-        
-        .set-badge {
-            background: #667eea;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 500;
-        }
-        
-        .delete-btn {
-            float: right;
-            background: #ff6b6b;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background 0.3s ease;
-        }
-        
-        .delete-btn:hover {
-            background: #ff5252;
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #888;
-        }
-        
-        .empty-state h3 {
-            margin-bottom: 10px;
+        @media (max-width: 768px) {
+            .form-row {
+                flex-direction: column;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .sets-grid {
+                grid-template-columns: 50px 1fr 1fr;
+                gap: 8px;
+            }
         }
     </style>
 </head>
@@ -1267,67 +243,60 @@
         
         <div class="card">
             <h2>Log New Exercise</h2>
-            <form id="exerciseForm">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="exerciseCategory">Exercise Category</label>
-                        <select id="exerciseCategory" required onchange="updateExerciseOptions()">
-                            <option value="">Select Category</option>
-                            <option value="upper-push">Upper Body Push</option>
-                            <option value="lower-push">Lower Body Push</option>
-                            <option value="upper-pull">Upper Body Pull</option>
-                            <option value="lower-pull">Lower Body Pull</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="exerciseName">Exercise</label>
-                        <select id="exerciseName" required disabled onchange="showSetsContainer()">
-                            <option value="">Select exercise first</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="exerciseDate">Date</label>
-                        <input type="date" id="exerciseDate" required>
-                    </div>
+            <div class="form-group">
+                <label for="exerciseCategory">Exercise Category</label>
+                <select id="exerciseCategory" onchange="updateExercises()">
+                    <option value="">Select Category</option>
+                    <option value="upper-push">Upper Body Push</option>
+                    <option value="lower-push">Lower Body Push</option>
+                    <option value="upper-pull">Upper Body Pull</option>
+                    <option value="lower-pull">Lower Body Pull</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="exerciseName">Exercise</label>
+                <select id="exerciseName" disabled onchange="showSets()">
+                    <option value="">Select exercise first</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="exerciseDate">Date</label>
+                <input type="date" id="exerciseDate">
+            </div>
+            
+            <div id="setsContainer" class="hidden">
+                <h3 style="margin-bottom: 20px; color: #667eea;">Enter Sets Details</h3>
+                <div class="sets-grid">
+                    <div class="set-header">Set</div>
+                    <div class="set-header">Reps</div>
+                    <div class="set-header">Weight (kg)</div>
+                    
+                    <div class="set-number">1</div>
+                    <input type="number" id="reps1" class="set-input" placeholder="12">
+                    <input type="number" id="weight1" class="set-input" step="0.1" placeholder="50">
+                    
+                    <div class="set-number">2</div>
+                    <input type="number" id="reps2" class="set-input" placeholder="10">
+                    <input type="number" id="weight2" class="set-input" step="0.1" placeholder="50">
+                    
+                    <div class="set-number">3</div>
+                    <input type="number" id="reps3" class="set-input" placeholder="8">
+                    <input type="number" id="weight3" class="set-input" step="0.1" placeholder="50">
+                    
+                    <div class="set-number">4</div>
+                    <input type="number" id="reps4" class="set-input" placeholder="6">
+                    <input type="number" id="weight4" class="set-input" step="0.1" placeholder="50">
                 </div>
-                
-                <div id="setsContainer" style="display: none;">
-                    <h3 style="margin-bottom: 20px; color: #667eea;">Enter Sets Details</h3>
-                    <div class="sets-grid">
-                        <div class="set-header">Set</div>
-                        <div class="set-header">Reps</div>
-                        <div class="set-header">Weight (kg)</div>
-                        
-                        <div class="set-number">1</div>
-                        <input type="number" id="reps1" min="0" placeholder="12" class="set-input">
-                        <input type="number" id="weight1" min="0" step="0.1" placeholder="50" class="set-input">
-                        
-                        <div class="set-number">2</div>
-                        <input type="number" id="reps2" min="0" placeholder="10" class="set-input">
-                        <input type="number" id="weight2" min="0" step="0.1" placeholder="50" class="set-input">
-                        
-                        <div class="set-number">3</div>
-                        <input type="number" id="reps3" min="0" placeholder="8" class="set-input">
-                        <input type="number" id="weight3" min="0" step="0.1" placeholder="50" class="set-input">
-                        
-                        <div class="set-number">4</div>
-                        <input type="number" id="reps4" min="0" placeholder="6" class="set-input">
-                        <input type="number" id="weight4" min="0" step="0.1" placeholder="50" class="set-input">
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="notes">Notes</label>
-                    <textarea id="notes" rows="3" placeholder="Additional notes about this exercise..."></textarea>
-                </div>
-                
-                <button type="submit" class="btn">Log Exercise</button>
-                <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button type="button" class="btn" onclick="exportData()" style="background: linear-gradient(45deg, #43e97b, #38f9d7);">📥 Export Data</button>
-                    <button type="button" class="btn" onclick="document.getElementById('importFile').click()" style="background: linear-gradient(45deg, #fa709a, #fee140);">📤 Import Data</button>
-                    <input type="file" id="importFile" accept=".json" style="display: none;" onchange="importData(event)">
-                </div>
-            </form>
+            </div>
+            
+            <div class="form-group">
+                <label for="notes">Notes</label>
+                <textarea id="notes" rows="3" placeholder="Additional notes..."></textarea>
+            </div>
+            
+            <button class="btn" onclick="logExercise()">Log Exercise</button>
         </div>
         
         <div class="stats-grid">
@@ -1344,66 +313,45 @@
                 <div class="stat-label">Total Volume (kg)</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number" id="thisWeekVolume">0</div>
-                <div class="stat-label">This Week Volume</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="avgVolume">0</div>
-                <div class="stat-label">Avg Volume/Workout</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="personalRecords">0</div>
-                <div class="stat-label">Personal Records</div>
+                <div class="stat-number" id="thisWeek">0</div>
+                <div class="stat-label">This Week</div>
             </div>
         </div>
         
         <div class="card">
             <div class="tabs">
-                <button class="tab active" onclick="switchTab('progress')">Progress Charts</button>
-                <button class="tab" onclick="switchTab('log')">Exercise Log</button>
+                <button class="tab active" onclick="switchTab('log')">Exercise Log</button>
+                <button class="tab" onclick="switchTab('charts')">Charts</button>
             </div>
             
-            <div id="progressTab" class="tab-content active">
-                <div class="chart-selector">
-                    <select id="chartType" onchange="updateSelectedChart()">
-                        <option value="volume">Volume Progression</option>
-                        <option value="strength">Strength Progression</option>
-                        <option value="category">Category Distribution</option>
-                        <option value="heatmap">Weekly Heatmap</option>
-                        <option value="exercise-volume">Exercise Volume Comparison</option>
-                        <option value="pr-timeline">Personal Records Timeline</option>
-                    </select>
-                </div>
-                <div class="chart-container">
-                    <canvas id="mainChart"></canvas>
-                </div>
-                <div class="chart-container">
-                    <canvas id="secondaryChart"></canvas>
-                </div>
-            </div>
-            
-            <div id="logTab" class="tab-content">
+            <div id="logTab" class="tab-content active">
                 <div class="exercise-log" id="exerciseLog">
-                    <div class="empty-state">
+                    <div style="text-align: center; padding: 40px; color: #888;">
                         <h3>No exercises logged yet</h3>
                         <p>Start by logging your first exercise above!</p>
                     </div>
                 </div>
             </div>
+            
+            <div id="chartsTab" class="tab-content">
+                <div style="height: 400px; display: flex; align-items: center; justify-content: center; color: #888;">
+                    Charts will appear here after you log some exercises
+                </div>
+            </div>
         </div>
     </div>
-    
+
     <script>
-        let exercises = [];
-        let progressChart, exerciseChart;
+        // Exercise data
+        var exerciseData = [];
         
-        // Exercise categories and their exercises
-        const exerciseCategories = {
+        // Exercise categories
+        var categories = {
             'upper-push': {
                 name: 'Upper Body Push',
                 exercises: [
                     'Flat Bench Press',
-                    'Overhead Press',
+                    'Overhead Press', 
                     'Inclined Dumbbell Press',
                     'Dips',
                     'Lateral Raise',
@@ -1423,78 +371,76 @@
             },
             'upper-pull': {
                 name: 'Upper Body Pull',
-                exercises: [
-                    // Will be populated when you provide them
-                ]
+                exercises: []
             },
             'lower-pull': {
-                name: 'Lower Body Pull',
-                exercises: [
-                    // Will be populated when you provide them
-                ]
+                name: 'Lower Body Pull', 
+                exercises: []
             }
         };
         
-        // Set today's date as default
-        document.getElementById('exerciseDate').valueAsDate = new Date();
-        
-        // Load data from memory on page load
-        window.addEventListener('load', function() {
-            loadExercises();
+        // Initialize on page load
+        window.onload = function() {
+            document.getElementById('exerciseDate').valueAsDate = new Date();
+            loadData();
             updateStats();
-            updateCharts();
-        });
+        };
         
-        // Update exercise options based on selected category
-        function updateExerciseOptions() {
-            const categorySelect = document.getElementById('exerciseCategory');
-            const exerciseSelect = document.getElementById('exerciseName');
-            const setsContainer = document.getElementById('setsContainer');
-            const selectedCategory = categorySelect.value;
+        // Update exercise dropdown when category changes
+        function updateExercises() {
+            var categorySelect = document.getElementById('exerciseCategory');
+            var exerciseSelect = document.getElementById('exerciseName');
+            var category = categorySelect.value;
             
             exerciseSelect.innerHTML = '<option value="">Select exercise</option>';
-            setsContainer.style.display = 'none';
+            exerciseSelect.disabled = true;
+            document.getElementById('setsContainer').classList.add('hidden');
             
-            if (selectedCategory && exerciseCategories[selectedCategory]) {
+            if (category && categories[category]) {
                 exerciseSelect.disabled = false;
-                exerciseCategories[selectedCategory].exercises.forEach(exercise => {
-                    const option = document.createElement('option');
-                    option.value = exercise;
-                    option.textContent = exercise;
+                var exercises = categories[category].exercises;
+                
+                for (var i = 0; i < exercises.length; i++) {
+                    var option = document.createElement('option');
+                    option.value = exercises[i];
+                    option.textContent = exercises[i];
                     exerciseSelect.appendChild(option);
-                });
-            } else {
-                exerciseSelect.disabled = true;
+                }
             }
         }
         
-        // Show sets container when exercise is selected
-        document.getElementById('exerciseName').addEventListener('change', function() {
-            const setsContainer = document.getElementById('setsContainer');
-            if (this.value) {
-                setsContainer.style.display = 'block';
+        // Show sets input when exercise is selected
+        function showSets() {
+            var exerciseSelect = document.getElementById('exerciseName');
+            var setsContainer = document.getElementById('setsContainer');
+            
+            if (exerciseSelect.value) {
+                setsContainer.classList.remove('hidden');
             } else {
-                setsContainer.style.display = 'none';
+                setsContainer.classList.add('hidden');
             }
-        });
+        }
         
-        // Form submission
-        document.getElementById('exerciseForm').addEventListener('submit', function(e) {
-            e.preventDefault();
+        // Main function to log exercise
+        function logExercise() {
+            var category = document.getElementById('exerciseCategory').value;
+            var exercise = document.getElementById('exerciseName').value;
+            var date = document.getElementById('exerciseDate').value;
+            var notes = document.getElementById('notes').value;
             
-            const categoryValue = document.getElementById('exerciseCategory').value;
-            const categoryName = exerciseCategories[categoryValue] ? exerciseCategories[categoryValue].name : '';
-            const exerciseName = document.getElementById('exerciseName').value;
-            const date = document.getElementById('exerciseDate').value;
-            const notes = document.getElementById('notes').value;
+            // Validate inputs
+            if (!category || !exercise || !date) {
+                alert('Please select category, exercise, and date');
+                return;
+            }
             
-            // Collect sets data
-            const sets = [];
-            for (let i = 1; i <= 4; i++) {
-                const reps = document.getElementById(`reps${i}`).value;
-                const weight = document.getElementById(`weight${i}`).value;
+            // Collect sets
+            var sets = [];
+            for (var i = 1; i <= 4; i++) {
+                var reps = document.getElementById('reps' + i).value;
+                var weight = document.getElementById('weight' + i).value;
                 
-                if (reps && weight) {
+                if (reps && weight && reps > 0 && weight > 0) {
                     sets.push({
                         setNumber: i,
                         reps: parseInt(reps),
@@ -1503,256 +449,175 @@
                 }
             }
             
-            // Only log if at least one set is entered
             if (sets.length === 0) {
-                alert('Please enter at least one set with reps and weight.');
+                alert('Please enter at least one set with reps and weight');
                 return;
             }
             
-            const exercise = {
+            // Calculate volume
+            var volume = 0;
+            for (var i = 0; i < sets.length; i++) {
+                volume += sets[i].reps * sets[i].weight;
+            }
+            
+            // Create exercise object
+            var exerciseObj = {
                 id: Date.now(),
-                category: categoryName,
-                name: exerciseName,
+                category: categories[category].name,
+                name: exercise,
                 date: date,
                 sets: sets,
+                volume: volume,
                 notes: notes
             };
             
-            exercises.push(exercise);
-            saveExercises();
-            this.reset();
-            document.getElementById('exerciseDate').valueAsDate = new Date();
-            document.getElementById('exerciseName').disabled = true;
-            document.getElementById('setsContainer').style.display = 'none';
+            // Save exercise
+            exerciseData.push(exerciseObj);
+            saveData();
             
+            // Reset form
+            clearForm();
+            
+            // Update display
             updateStats();
-            updateCharts();
-            renderExerciseLog();
-        });
-        
-        function saveExercises() {
-            // Store in memory only - no localStorage
-            // Data persists during the session
-        }
-        
-        function loadExercises() {
-            // Load from memory - no localStorage
-            // exercises array is already initialized
-        }
-        
-        function updateStats() {
-            const totalExercises = exercises.length;
-            const totalSets = exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
-            const avgSets = totalExercises > 0 ? (totalSets / totalExercises).toFixed(1) : 0;
+            updateLog();
             
-            const weekAgo = new Date();
+            alert('Exercise logged successfully! Volume: ' + volume + 'kg');
+        }
+        
+        // Clear form after submission
+        function clearForm() {
+            document.getElementById('exerciseCategory').value = '';
+            document.getElementById('exerciseName').innerHTML = '<option value="">Select exercise first</option>';
+            document.getElementById('exerciseName').disabled = true;
+            document.getElementById('exerciseDate').valueAsDate = new Date();
+            document.getElementById('notes').value = '';
+            document.getElementById('setsContainer').classList.add('hidden');
+            
+            for (var i = 1; i <= 4; i++) {
+                document.getElementById('reps' + i).value = '';
+                document.getElementById('weight' + i).value = '';
+            }
+        }
+        
+        // Update statistics
+        function updateStats() {
+            var totalExercises = exerciseData.length;
+            var totalSets = 0;
+            var totalVolume = 0;
+            var thisWeek = 0;
+            
+            var weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
-            const thisWeek = exercises.filter(ex => new Date(ex.date) >= weekAgo).length;
+            
+            for (var i = 0; i < exerciseData.length; i++) {
+                totalSets += exerciseData[i].sets.length;
+                totalVolume += exerciseData[i].volume;
+                
+                if (new Date(exerciseData[i].date) >= weekAgo) {
+                    thisWeek++;
+                }
+            }
             
             document.getElementById('totalExercises').textContent = totalExercises;
-            document.getElementById('totalDuration').textContent = totalSets;
-            document.getElementById('avgDuration').textContent = avgSets;
+            document.getElementById('totalSets').textContent = totalSets;
+            document.getElementById('totalVolume').textContent = Math.round(totalVolume);
             document.getElementById('thisWeek').textContent = thisWeek;
         }
         
-        function updateCharts() {
-            updateProgressChart();
-            updateExerciseChart();
-        }
-        
-        function updateProgressChart() {
-            const ctx = document.getElementById('progressChart').getContext('2d');
+        // Update exercise log
+        function updateLog() {
+            var logContainer = document.getElementById('exerciseLog');
             
-            // Group exercises by date
-            const dateGroups = exercises.reduce((groups, exercise) => {
-                const date = exercise.date;
-                if (!groups[date]) {
-                    groups[date] = 0;
-                }
-                groups[date] += exercise.sets.length;
-                return groups;
-            }, {});
-            
-            // Calculate daily totals
-            const dates = Object.keys(dateGroups).sort();
-            const setCounts = dates.map(date => dateGroups[date]);
-            
-            if (progressChart) {
-                progressChart.destroy();
-            }
-            
-            progressChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: dates,
-                    datasets: [{
-                        label: 'Daily Sets Completed',
-                        data: setCounts,
-                        borderColor: '#667eea',
-                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Daily Sets Completed Trend'
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true
-                        }
-                    }
-                }
-            });
-        }
-        
-        function updateExerciseChart() {
-            const ctx = document.getElementById('exerciseChart').getContext('2d');
-            
-            // Group exercises by category
-            const categoryGroups = exercises.reduce((groups, exercise) => {
-                const category = exercise.category || 'Uncategorized';
-                if (!groups[category]) {
-                    groups[category] = 0;
-                }
-                groups[category]++;
-                return groups;
-            }, {});
-            
-            const categoryNames = Object.keys(categoryGroups);
-            const categoryCounts = Object.values(categoryGroups);
-            
-            if (exerciseChart) {
-                exerciseChart.destroy();
-            }
-            
-            exerciseChart = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: categoryNames,
-                    datasets: [{
-                        data: categoryCounts,
-                        backgroundColor: [
-                            '#667eea',
-                            '#764ba2',
-                            '#f093fb',
-                            '#f5576c',
-                            '#4facfe',
-                            '#43e97b',
-                            '#fa709a',
-                            '#fee140'
-                        ]
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Exercise Distribution by Category'
-                        }
-                    }
-                }
-            });
-        }
-        
-        function renderExerciseLog() {
-            const logContainer = document.getElementById('exerciseLog');
-            
-            if (exercises.length === 0) {
-                logContainer.innerHTML = `
-                    <div class="empty-state">
-                        <h3>No exercises logged yet</h3>
-                        <p>Start by logging your first exercise above!</p>
-                    </div>
-                `;
+            if (exerciseData.length === 0) {
+                logContainer.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;"><h3>No exercises logged yet</h3><p>Start by logging your first exercise above!</p></div>';
                 return;
             }
             
-            // Group exercises by date
-            const dateGroups = exercises.reduce((groups, exercise) => {
-                const date = exercise.date;
-                if (!groups[date]) {
-                    groups[date] = [];
+            var html = '';
+            
+            // Sort by date (newest first)
+            var sortedData = exerciseData.slice().sort(function(a, b) {
+                return new Date(b.date) - new Date(a.date);
+            });
+            
+            for (var i = 0; i < sortedData.length; i++) {
+                var ex = sortedData[i];
+                html += '<div class="exercise-entry">';
+                html += '<div class="exercise-name">' + ex.name + '</div>';
+                html += '<div class="exercise-details">';
+                html += 'Category: ' + ex.category + '<br>';
+                html += 'Date: ' + ex.date + '<br>';
+                html += 'Sets: ';
+                
+                for (var j = 0; j < ex.sets.length; j++) {
+                    html += ex.sets[j].reps + ' reps @ ' + ex.sets[j].weight + 'kg';
+                    if (j < ex.sets.length - 1) html += ', ';
                 }
-                groups[date].push(exercise);
-                return groups;
-            }, {});
-            
-            // Sort dates in descending order
-            const sortedDates = Object.keys(dateGroups).sort((a, b) => new Date(b) - new Date(a));
-            
-            logContainer.innerHTML = sortedDates.map(date => {
-                const dayExercises = dateGroups[date];
-                const formattedDate = new Date(date).toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                });
                 
-                const exerciseHtml = dayExercises.map(exercise => `
-                    <div class="exercise-entry">
-                        <div class="exercise-header">
-                            <div class="exercise-name">${exercise.name}</div>
-                            <button class="delete-btn" onclick="deleteExercise(${exercise.id})">×</button>
-                        </div>
-                        <div style="margin-bottom: 10px; color: #888; font-size: 14px; font-weight: 500;">${exercise.category}</div>
-                        <div class="sets-display">
-                            ${exercise.sets.map(set => `
-                                <div class="set-badge">Set ${set.setNumber}: ${set.reps} reps @ ${set.weight}kg</div>
-                            `).join('')}
-                        </div>
-                        ${exercise.notes ? `<div style="margin-top: 10px; font-style: italic; color: #666;">${exercise.notes}</div>` : ''}
-                    </div>
-                `).join('');
+                html += '<br>Volume: ' + ex.volume + 'kg';
                 
-                return `
-                    <div class="day-group">
-                        <div class="day-header">${formattedDate}</div>
-                        ${exerciseHtml}
-                    </div>
-                `;
-            }).join('');
-        }
-        
-        function deleteExercise(id) {
-            if (confirm('Are you sure you want to delete this exercise?')) {
-                exercises = exercises.filter(ex => ex.id !== id);
-                saveExercises();
-                updateStats();
-                updateCharts();
-                renderExerciseLog();
+                if (ex.notes) {
+                    html += '<br>Notes: ' + ex.notes;
+                }
+                
+                html += '</div></div>';
             }
+            
+            logContainer.innerHTML = html;
         }
         
-        function switchTab(tab) {
-            // Remove active class from all tabs and contents
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        // Switch between tabs
+        function switchTab(tabName) {
+            // Hide all tabs
+            var tabs = document.querySelectorAll('.tab');
+            var contents = document.querySelectorAll('.tab-content');
             
-            // Add active class to clicked tab
+            for (var i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove('active');
+            }
+            
+            for (var i = 0; i < contents.length; i++) {
+                contents[i].classList.remove('active');
+            }
+            
+            // Show selected tab
             event.target.classList.add('active');
             
-            // Show corresponding content
-            if (tab === 'progress') {
-                document.getElementById('progressTab').classList.add('active');
-            } else {
+            if (tabName === 'log') {
                 document.getElementById('logTab').classList.add('active');
-                renderExerciseLog();
+            } else {
+                document.getElementById('chartsTab').classList.add('active');
             }
         }
         
-        // Initialize the log view
-        renderExerciseLog();
+        // Save data to localStorage
+        function saveData() {
+            try {
+                localStorage.setItem('exerciseLoggerData', JSON.stringify({
+                    exercises: exerciseData,
+                    version: '1.0',
+                    lastUpdated: new Date().toISOString()
+                }));
+            } catch (e) {
+                console.log('Could not save to localStorage');
+            }
+        }
+        
+        // Load data from localStorage
+        function loadData() {
+            try {
+                var savedData = localStorage.getItem('exerciseLoggerData');
+                if (savedData) {
+                    var data = JSON.parse(savedData);
+                    exerciseData = data.exercises || [];
+                    updateLog();
+                }
+            } catch (e) {
+                console.log('Could not load from localStorage');
+                exerciseData = [];
+            }
+        }
     </script>
 </body>
 </html>

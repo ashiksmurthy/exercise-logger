@@ -297,6 +297,16 @@
             </div>
             
             <button class="btn" onclick="logExercise()">Log Exercise</button>
+            
+            <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="btn" onclick="exportData()" style="background: linear-gradient(45deg, #43e97b, #38f9d7); font-size: 14px; padding: 8px 16px;">
+                    📥 Export Data
+                </button>
+                <button class="btn" onclick="importData()" style="background: linear-gradient(45deg, #fa709a, #fee140); font-size: 14px; padding: 8px 16px;">
+                    📤 Import Data
+                </button>
+                <input type="file" id="importFile" accept=".json" style="display: none;">
+            </div>
         </div>
         
         <div class="stats-grid">
@@ -371,11 +381,25 @@
             },
             'upper-pull': {
                 name: 'Upper Body Pull',
-                exercises: []
+                exercises: [
+                    'Pull-ups',
+                    'Barbell Rows',
+                    'Lat Pulldown',
+                    'Face Pulls',
+                    'Hammer Curls',
+                    'Preacher Curls'
+                ]
             },
             'lower-pull': {
-                name: 'Lower Body Pull', 
-                exercises: []
+                name: 'Lower Body Pull',
+                exercises: [
+                    'Deadlift',
+                    'Front Squat/Hack Squat',
+                    'Nordic Curls',
+                    'Lunges',
+                    'Standing Calf Raises',
+                    'Plank Variations'
+                ]
             }
         };
         
@@ -591,32 +615,187 @@
             }
         }
         
-        // Save data to localStorage
+        // Enhanced save with backup
         function saveData() {
             try {
-                localStorage.setItem('exerciseLoggerData', JSON.stringify({
+                var dataToSave = {
                     exercises: exerciseData,
                     version: '1.0',
-                    lastUpdated: new Date().toISOString()
-                }));
+                    lastUpdated: new Date().toISOString(),
+                    totalExercises: exerciseData.length,
+                    backup: true
+                };
+                
+                localStorage.setItem('exerciseLoggerData', JSON.stringify(dataToSave));
+                
+                // Create automatic backup every 10 exercises
+                if (exerciseData.length > 0 && exerciseData.length % 10 === 0) {
+                    localStorage.setItem('exerciseLoggerBackup_' + exerciseData.length, JSON.stringify(dataToSave));
+                }
+                
+                console.log('Data saved successfully. Total exercises: ' + exerciseData.length);
             } catch (e) {
-                console.log('Could not save to localStorage');
+                console.error('Could not save to localStorage:', e);
+                alert('Warning: Could not save data to browser storage. Please export your data as backup.');
             }
         }
         
-        // Load data from localStorage
+        // Load data from localStorage with backup recovery
         function loadData() {
             try {
                 var savedData = localStorage.getItem('exerciseLoggerData');
                 if (savedData) {
                     var data = JSON.parse(savedData);
                     exerciseData = data.exercises || [];
+                    console.log('Loaded ' + exerciseData.length + ' exercises from storage');
                     updateLog();
+                } else {
+                    console.log('No saved data found');
                 }
             } catch (e) {
-                console.log('Could not load from localStorage');
-                exerciseData = [];
+                console.error('Could not load from localStorage:', e);
+                
+                // Try to recover from backup
+                var backupKeys = [];
+                for (var i = 0; i < localStorage.length; i++) {
+                    var key = localStorage.key(i);
+                    if (key.startsWith('exerciseLoggerBackup_')) {
+                        backupKeys.push(key);
+                    }
+                }
+                
+                if (backupKeys.length > 0) {
+                    var latestBackup = backupKeys.sort().pop();
+                    try {
+                        var backupData = JSON.parse(localStorage.getItem(latestBackup));
+                        exerciseData = backupData.exercises || [];
+                        alert('Primary data corrupted. Recovered from backup: ' + exerciseData.length + ' exercises');
+                        updateLog();
+                    } catch (backupError) {
+                        console.error('Backup recovery failed:', backupError);
+                        exerciseData = [];
+                    }
+                } else {
+                    exerciseData = [];
+                }
             }
+        }
+        
+        // Export data as JSON file
+        function exportData() {
+            if (exerciseData.length === 0) {
+                alert('No exercise data to export');
+                return;
+            }
+            
+            var exportObj = {
+                exercises: exerciseData,
+                version: '1.0',
+                exportDate: new Date().toISOString(),
+                totalExercises: exerciseData.length,
+                dateRange: {
+                    from: getEarliestDate(),
+                    to: getLatestDate()
+                }
+            };
+            
+            var dataStr = JSON.stringify(exportObj, null, 2);
+            var dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            var link = document.createElement('a');
+            link.href = URL.createObjectURL(dataBlob);
+            link.download = 'exercise_data_' + new Date().toISOString().split('T')[0] + '.json';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            alert('Data exported successfully!\nFile: exercise_data_' + new Date().toISOString().split('T')[0] + '.json\nTotal exercises: ' + exerciseData.length);
+        }
+        
+        // Import data from JSON file
+        function importData() {
+            document.getElementById('importFile').click();
+        }
+        
+        // Handle file selection for import
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('importFile').addEventListener('change', function(event) {
+                var file = event.target.files[0];
+                if (!file) return;
+                
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        var importedData = JSON.parse(e.target.result);
+                        
+                        if (!importedData.exercises || !Array.isArray(importedData.exercises)) {
+                            alert('Invalid file format. Please select a valid exercise data file.');
+                            return;
+                        }
+                        
+                        var importCount = importedData.exercises.length;
+                        var currentCount = exerciseData.length;
+                        
+                        var mergeChoice = confirm(
+                            'Import Options:\n\n' +
+                            'Current data: ' + currentCount + ' exercises\n' +
+                            'Import file: ' + importCount + ' exercises\n\n' +
+                            'Click OK to MERGE (add to existing data)\n' +
+                            'Click Cancel to REPLACE (overwrite all data)'
+                        );
+                        
+                        if (mergeChoice) {
+                            // Merge: Add imported exercises with new IDs
+                            var maxId = exerciseData.length > 0 ? Math.max.apply(Math, exerciseData.map(function(ex) { return ex.id || 0; })) : 0;
+                            
+                            for (var i = 0; i < importedData.exercises.length; i++) {
+                                var importedEx = importedData.exercises[i];
+                                importedEx.id = maxId + i + 1;
+                                importedEx.imported = true;
+                                exerciseData.push(importedEx);
+                            }
+                            
+                            alert('Successfully merged ' + importCount + ' exercises!\nTotal exercises now: ' + exerciseData.length);
+                        } else {
+                            // Replace: Use imported data entirely
+                            exerciseData = importedData.exercises;
+                            
+                            // Ensure all exercises have IDs
+                            for (var i = 0; i < exerciseData.length; i++) {
+                                if (!exerciseData[i].id) {
+                                    exerciseData[i].id = Date.now() + i;
+                                }
+                            }
+                            
+                            alert('Successfully replaced all data!\nTotal exercises: ' + exerciseData.length);
+                        }
+                        
+                        // Save and refresh display
+                        saveData();
+                        updateStats();
+                        updateLog();
+                        
+                    } catch (error) {
+                        alert('Error importing file: ' + error.message + '\n\nPlease ensure you\'re importing a valid exercise data file.');
+                    }
+                };
+                
+                reader.readAsText(file);
+                event.target.value = ''; // Reset file input
+            });
+        });
+        
+        // Helper functions for date range
+        function getEarliestDate() {
+            if (exerciseData.length === 0) return null;
+            var dates = exerciseData.map(function(ex) { return new Date(ex.date); });
+            return new Date(Math.min.apply(Math, dates)).toISOString().split('T')[0];
+        }
+        
+        function getLatestDate() {
+            if (exerciseData.length === 0) return null;
+            var dates = exerciseData.map(function(ex) { return new Date(ex.date); });
+            return new Date(Math.max.apply(Math, dates)).toISOString().split('T')[0];
         }
     </script>
 </body>

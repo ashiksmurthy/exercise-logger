@@ -305,7 +305,17 @@
                 <button class="btn" onclick="importData()" style="background: linear-gradient(45deg, #fa709a, #fee140); font-size: 14px; padding: 8px 16px;">
                     📤 Import Data
                 </button>
+                <button class="btn" onclick="connectGoogleDrive()" id="cloudSyncBtn" style="background: linear-gradient(45deg, #4285f4, #34a853); font-size: 14px; padding: 8px 16px;">
+                    ☁️ Connect Cloud Sync
+                </button>
+                <button class="btn" onclick="syncToCloud()" id="syncBtn" style="background: linear-gradient(45deg, #34a853, #4285f4); font-size: 14px; padding: 8px 16px; display: none;">
+                    🔄 Sync Now
+                </button>
                 <input type="file" id="importFile" accept=".json" style="display: none;">
+            </div>
+            
+            <div id="cloudStatus" style="margin-top: 15px; padding: 10px; border-radius: 8px; display: none;">
+                <div id="cloudStatusText"></div>
             </div>
         </div>
         
@@ -351,9 +361,22 @@
         </div>
     </div>
 
+    <script src="https://apis.google.com/js/api.js"></script>
     <script>
         // Exercise data
         var exerciseData = [];
+        
+        // Google Drive API configuration
+        var GOOGLE_CONFIG = {
+            clientId: 'YOUR_CLIENT_ID', // You'll need to set this up
+            apiKey: 'YOUR_API_KEY', // You'll need to set this up
+            scope: 'https://www.googleapis.com/auth/drive.file',
+            fileName: 'exercise_logger_data.json',
+            folderId: null // Will be created automatically
+        };
+        
+        var isGoogleApiLoaded = false;
+        var isSignedIn = false;
         
         // Exercise categories
         var categories = {
@@ -408,7 +431,256 @@
             document.getElementById('exerciseDate').valueAsDate = new Date();
             loadData();
             updateStats();
+            
+            // Load Google API
+            if (typeof gapi !== 'undefined') {
+                gapi.load('auth2', initGoogleAuth);
+                gapi.load('client', initGoogleClient);
+            }
         };
+        
+        // Initialize Google Auth
+        function initGoogleAuth() {
+            gapi.auth2.init({
+                client_id: GOOGLE_CONFIG.clientId
+            }).then(function() {
+                isGoogleApiLoaded = true;
+                updateCloudStatus('Google API loaded - ready to connect');
+            }).catch(function(error) {
+                updateCloudStatus('Google API error: ' + error.error, 'error');
+            });
+        }
+        
+        // Initialize Google Client
+        function initGoogleClient() {
+            gapi.client.init({
+                apiKey: GOOGLE_CONFIG.apiKey,
+                clientId: GOOGLE_CONFIG.clientId,
+                scope: GOOGLE_CONFIG.scope,
+                discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+            });
+        }
+        
+        // Connect to Google Drive
+        function connectGoogleDrive() {
+            if (!isGoogleApiLoaded) {
+                updateCloudStatus('Google API not loaded yet. Please wait and try again.', 'error');
+                return;
+            }
+            
+            updateCloudStatus('Connecting to Google Drive...', 'loading');
+            
+            var authInstance = gapi.auth2.getAuthInstance();
+            
+            if (authInstance.isSignedIn.get()) {
+                isSignedIn = true;
+                updateCloudStatus('Already connected to Google Drive!', 'success');
+                showSyncButton();
+            } else {
+                authInstance.signIn().then(function() {
+                    isSignedIn = true;
+                    updateCloudStatus('Successfully connected to Google Drive!', 'success');
+                    showSyncButton();
+                    
+                    // Auto-sync on first connection
+                    setTimeout(syncToCloud, 1000);
+                }).catch(function(error) {
+                    updateCloudStatus('Failed to connect: ' + error.error, 'error');
+                });
+            }
+        }
+        
+        // Sync data to cloud
+        function syncToCloud() {
+            if (!isSignedIn) {
+                updateCloudStatus('Please connect to Google Drive first', 'error');
+                return;
+            }
+            
+            updateCloudStatus('Syncing to cloud...', 'loading');
+            
+            var dataToSync = {
+                exercises: exerciseData,
+                version: '1.0',
+                lastSync: new Date().toISOString(),
+                totalExercises: exerciseData.length,
+                device: navigator.userAgent.includes('Mobile') ? 'mobile' : 'desktop'
+            };
+            
+            // First, try to find existing file
+            gapi.client.drive.files.list({
+                q: "name='" + GOOGLE_CONFIG.fileName + "' and trashed=false",
+                spaces: 'drive'
+            }).then(function(response) {
+                var files = response.result.files;
+                
+                if (files && files.length > 0) {
+                    // Update existing file
+                    updateCloudFile(files[0].id, dataToSync);
+                } else {
+                    // Create new file
+                    createCloudFile(dataToSync);
+                }
+            }).catch(function(error) {
+                updateCloudStatus('Sync error: ' + error.message, 'error');
+            });
+        }
+        
+        // Create new file in Google Drive
+        function createCloudFile(data) {
+            var fileMetadata = {
+                name: GOOGLE_CONFIG.fileName,
+                parents: GOOGLE_CONFIG.folderId ? [GOOGLE_CONFIG.folderId] : undefined
+            };
+            
+            var form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(fileMetadata)], {type: 'application/json'}));
+            form.append('file', new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
+            
+            fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                method: 'POST',
+                headers: new Headers({
+                    'Authorization': 'Bearer ' + gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token
+                }),
+                body: form
+            }).then(function(response) {
+                return response.json();
+            }).then(function(result) {
+                updateCloudStatus('Data synced to cloud successfully! (' + exerciseData.length + ' exercises)', 'success');
+                
+                // Auto-sync every 5 minutes
+                setTimeout(autoSync, 5 * 60 * 1000);
+            }).catch(function(error) {
+                updateCloudStatus('Failed to create cloud file: ' + error.message, 'error');
+            });
+        }
+        
+        // Update existing file in Google Drive
+        function updateCloudFile(fileId, data) {
+            fetch('https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media', {
+                method: 'PATCH',
+                headers: new Headers({
+                    'Authorization': 'Bearer ' + gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token,
+                    'Content-Type': 'application/json'
+                }),
+                body: JSON.stringify(data, null, 2)
+            }).then(function(response) {
+                return response.json();
+            }).then(function(result) {
+                updateCloudStatus('Data synced to cloud successfully! (' + exerciseData.length + ' exercises)', 'success');
+                
+                // Auto-sync every 5 minutes
+                setTimeout(autoSync, 5 * 60 * 1000);
+            }).catch(function(error) {
+                updateCloudStatus('Failed to update cloud file: ' + error.message, 'error');
+            });
+        }
+        
+        // Load data from cloud
+        function loadFromCloud() {
+            if (!isSignedIn) {
+                return;
+            }
+            
+            updateCloudStatus('Loading from cloud...', 'loading');
+            
+            gapi.client.drive.files.list({
+                q: "name='" + GOOGLE_CONFIG.fileName + "' and trashed=false",
+                spaces: 'drive'
+            }).then(function(response) {
+                var files = response.result.files;
+                
+                if (files && files.length > 0) {
+                    // Download file content
+                    gapi.client.drive.files.get({
+                        fileId: files[0].id,
+                        alt: 'media'
+                    }).then(function(response) {
+                        try {
+                            var cloudData = JSON.parse(response.body);
+                            
+                            if (cloudData.exercises && Array.isArray(cloudData.exercises)) {
+                                var cloudCount = cloudData.exercises.length;
+                                var localCount = exerciseData.length;
+                                
+                                if (cloudCount > localCount) {
+                                    if (confirm('Cloud has ' + cloudCount + ' exercises, local has ' + localCount + '. Load from cloud?')) {
+                                        exerciseData = cloudData.exercises;
+                                        saveData();
+                                        updateStats();
+                                        updateLog();
+                                        updateCloudStatus('Loaded ' + cloudCount + ' exercises from cloud', 'success');
+                                    }
+                                } else {
+                                    updateCloudStatus('Local data is up to date (' + localCount + ' exercises)', 'success');
+                                }
+                            }
+                        } catch (error) {
+                            updateCloudStatus('Error parsing cloud data: ' + error.message, 'error');
+                        }
+                    });
+                } else {
+                    updateCloudStatus('No cloud data found - will create on next sync', 'info');
+                }
+            }).catch(function(error) {
+                updateCloudStatus('Error loading from cloud: ' + error.message, 'error');
+            });
+        }
+        
+        // Auto-sync function
+        function autoSync() {
+            if (isSignedIn && exerciseData.length > 0) {
+                syncToCloud();
+            }
+        }
+        
+        // Update cloud status display
+        function updateCloudStatus(message, type) {
+            var statusDiv = document.getElementById('cloudStatus');
+            var statusText = document.getElementById('cloudStatusText');
+            
+            statusDiv.style.display = 'block';
+            statusText.textContent = message;
+            
+            // Style based on type
+            switch(type) {
+                case 'success':
+                    statusDiv.style.background = 'rgba(52, 168, 83, 0.1)';
+                    statusDiv.style.border = '1px solid rgba(52, 168, 83, 0.3)';
+                    statusDiv.style.color = '#34a853';
+                    break;
+                case 'error':
+                    statusDiv.style.background = 'rgba(255, 107, 107, 0.1)';
+                    statusDiv.style.border = '1px solid rgba(255, 107, 107, 0.3)';
+                    statusDiv.style.color = '#ff6b6b';
+                    break;
+                case 'loading':
+                    statusDiv.style.background = 'rgba(102, 126, 234, 0.1)';
+                    statusDiv.style.border = '1px solid rgba(102, 126, 234, 0.3)';
+                    statusDiv.style.color = '#667eea';
+                    break;
+                default:
+                    statusDiv.style.background = 'rgba(136, 136, 136, 0.1)';
+                    statusDiv.style.border = '1px solid rgba(136, 136, 136, 0.3)';
+                    statusDiv.style.color = '#888';
+            }
+            
+            // Auto-hide after 5 seconds for non-error messages
+            if (type !== 'error') {
+                setTimeout(function() {
+                    statusDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+        
+        // Show sync button when connected
+        function showSyncButton() {
+            document.getElementById('cloudSyncBtn').style.display = 'none';
+            document.getElementById('syncBtn').style.display = 'inline-block';
+            
+            // Try to load from cloud on first connection
+            loadFromCloud();
+        }
         
         // Update exercise dropdown when category changes
         function updateExercises() {
@@ -498,6 +770,11 @@
             // Save exercise
             exerciseData.push(exerciseObj);
             saveData();
+            
+            // Auto-sync to cloud if connected
+            if (isSignedIn) {
+                setTimeout(syncToCloud, 1000);
+            }
             
             // Reset form
             clearForm();
@@ -615,72 +892,6 @@
             }
         }
         
-        // Enhanced save with backup
-        function saveData() {
-            try {
-                var dataToSave = {
-                    exercises: exerciseData,
-                    version: '1.0',
-                    lastUpdated: new Date().toISOString(),
-                    totalExercises: exerciseData.length,
-                    backup: true
-                };
-                
-                localStorage.setItem('exerciseLoggerData', JSON.stringify(dataToSave));
-                
-                // Create automatic backup every 10 exercises
-                if (exerciseData.length > 0 && exerciseData.length % 10 === 0) {
-                    localStorage.setItem('exerciseLoggerBackup_' + exerciseData.length, JSON.stringify(dataToSave));
-                }
-                
-                console.log('Data saved successfully. Total exercises: ' + exerciseData.length);
-            } catch (e) {
-                console.error('Could not save to localStorage:', e);
-                alert('Warning: Could not save data to browser storage. Please export your data as backup.');
-            }
-        }
-        
-        // Load data from localStorage with backup recovery
-        function loadData() {
-            try {
-                var savedData = localStorage.getItem('exerciseLoggerData');
-                if (savedData) {
-                    var data = JSON.parse(savedData);
-                    exerciseData = data.exercises || [];
-                    console.log('Loaded ' + exerciseData.length + ' exercises from storage');
-                    updateLog();
-                } else {
-                    console.log('No saved data found');
-                }
-            } catch (e) {
-                console.error('Could not load from localStorage:', e);
-                
-                // Try to recover from backup
-                var backupKeys = [];
-                for (var i = 0; i < localStorage.length; i++) {
-                    var key = localStorage.key(i);
-                    if (key.startsWith('exerciseLoggerBackup_')) {
-                        backupKeys.push(key);
-                    }
-                }
-                
-                if (backupKeys.length > 0) {
-                    var latestBackup = backupKeys.sort().pop();
-                    try {
-                        var backupData = JSON.parse(localStorage.getItem(latestBackup));
-                        exerciseData = backupData.exercises || [];
-                        alert('Primary data corrupted. Recovered from backup: ' + exerciseData.length + ' exercises');
-                        updateLog();
-                    } catch (backupError) {
-                        console.error('Backup recovery failed:', backupError);
-                        exerciseData = [];
-                    }
-                } else {
-                    exerciseData = [];
-                }
-            }
-        }
-        
         // Export data as JSON file
         function exportData() {
             if (exerciseData.length === 0) {
@@ -692,11 +903,7 @@
                 exercises: exerciseData,
                 version: '1.0',
                 exportDate: new Date().toISOString(),
-                totalExercises: exerciseData.length,
-                dateRange: {
-                    from: getEarliestDate(),
-                    to: getLatestDate()
-                }
+                totalExercises: exerciseData.length
             };
             
             var dataStr = JSON.stringify(exportObj, null, 2);
@@ -785,17 +992,63 @@
             });
         });
         
-        // Helper functions for date range
-        function getEarliestDate() {
-            if (exerciseData.length === 0) return null;
-            var dates = exerciseData.map(function(ex) { return new Date(ex.date); });
-            return new Date(Math.min.apply(Math, dates)).toISOString().split('T')[0];
+        // Enhanced save with backup
+        function saveData() {
+            try {
+                var dataToSave = {
+                    exercises: exerciseData,
+                    version: '1.0',
+                    lastUpdated: new Date().toISOString(),
+                    totalExercises: exerciseData.length
+                };
+                
+                localStorage.setItem('exerciseLoggerData', JSON.stringify(dataToSave));
+                
+                // Create automatic backup every 10 exercises
+                if (exerciseData.length > 0 && exerciseData.length % 10 === 0) {
+                    localStorage.setItem('exerciseLoggerBackup_' + exerciseData.length, JSON.stringify(dataToSave));
+                }
+            } catch (e) {
+                console.log('Could not save to localStorage');
+                alert('Warning: Could not save data to browser storage. Please export your data as backup.');
+            }
         }
         
-        function getLatestDate() {
-            if (exerciseData.length === 0) return null;
-            var dates = exerciseData.map(function(ex) { return new Date(ex.date); });
-            return new Date(Math.max.apply(Math, dates)).toISOString().split('T')[0];
+        // Load data from localStorage with backup recovery
+        function loadData() {
+            try {
+                var savedData = localStorage.getItem('exerciseLoggerData');
+                if (savedData) {
+                    var data = JSON.parse(savedData);
+                    exerciseData = data.exercises || [];
+                    updateLog();
+                }
+            } catch (e) {
+                console.log('Could not load from localStorage');
+                
+                // Try to recover from backup
+                var backupKeys = [];
+                for (var i = 0; i < localStorage.length; i++) {
+                    var key = localStorage.key(i);
+                    if (key && key.startsWith('exerciseLoggerBackup_')) {
+                        backupKeys.push(key);
+                    }
+                }
+                
+                if (backupKeys.length > 0) {
+                    var latestBackup = backupKeys.sort().pop();
+                    try {
+                        var backupData = JSON.parse(localStorage.getItem(latestBackup));
+                        exerciseData = backupData.exercises || [];
+                        alert('Primary data corrupted. Recovered from backup: ' + exerciseData.length + ' exercises');
+                        updateLog();
+                    } catch (backupError) {
+                        exerciseData = [];
+                    }
+                } else {
+                    exerciseData = [];
+                }
+            }
         }
     </script>
 </body>
